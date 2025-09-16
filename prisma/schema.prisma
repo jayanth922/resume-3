@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+model Flag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  type        FlagType @default(BOOLEAN)
+  variants    Json // Array of variants: [{"key": "control", "value": false}, {"key": "treatment", "value": true}]
+  rules       Json // Targeting rules: {"country": ["US", "CA"], "deviceType": ["mobile"]}
+  rolloutPct  Int      @default(0) // 0-100
+  salt        String   @default(cuid())
+  isActive    Boolean  @default(true)
+  applicationId String? // Optional: restrict flag to specific application
+  environment String   @default("production") // production, staging, development
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  exposures   Exposure[]
+  experiments Experiment[]
+  application Application? @relation(fields: [applicationId], references: [id])
+
+  @@map("flags")
+}
+
+model Application {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerEmail  String
+  environment String   @default("production")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys ApiKey[]
+  flags   Flag[]
+
+  @@index([ownerEmail])
+  @@map("applications")
+}
+
+model ApiKey {
+  id            String    @id @default(cuid())
+  applicationId String
+  keyHash       String    @unique
+  keyPreview    String    // First 8 characters for display
+  name          String
+  environment   String
+  permissions   String[]  @default(["read_flags", "log_exposures"])
+  isActive      Boolean   @default(true)
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([keyHash])
+  @@index([applicationId])
+  @@map("api_keys")
+}
+
+model Exposure {
+  id             String   @id @default(cuid())
+  userKey        String
+  flagKey        String
+  variant        String
+  timestamp      DateTime @default(now())
+  attributesJson Json? // User attributes at time of exposure
+  
+  flag Flag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
+
+  @@index([flagKey, timestamp])
+  @@index([userKey, flagKey])
+  @@map("exposures")
+}
+
+model Experiment {
+  id          String    @id @default(cuid())
+  flagKey     String
+  name        String
+  metric      String // "conversion_rate" or "click_through_rate"
+  startTs     DateTime
+  stopTs      DateTime?
+  summaryJson Json? // Results: {"control": {"users": 1000, "conversions": 50}, "treatment": {"users": 1000, "conversions": 75}, "winProbability": 0.95}
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  flag Flag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
+
+  @@index([flagKey])
+  @@map("experiments")
+}
+
+enum FlagType {
+  BOOLEAN
+  MULTIVARIATE
+}
