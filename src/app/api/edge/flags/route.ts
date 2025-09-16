@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { redis, CACHE_KEYS } from '@/lib/redis';
 import { getBucket, matchesTargetingRules, selectVariant } from '@/lib/bucketing';
 import { Flag, UserAttributes, FlagEvaluationResult } from '@/types';
-import { ApplicationManager } from '@/lib/applications';
 
 export const runtime = 'edge';
 
@@ -10,21 +9,6 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Optional API key authentication
-    let applicationContext = null;
-    const authHeader = request.headers.get('authorization');
-    if (authHeader?.startsWith('Bearer ')) {
-      const apiKey = authHeader.substring(7);
-      try {
-        applicationContext = await ApplicationManager.validateApiKey(apiKey);
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid API key' }),
-          { status: 401, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
     const { searchParams } = new URL(request.url);
     const userKey = searchParams.get('userKey');
     const flagKeys = searchParams.get('flagKeys')?.split(',') || [];
@@ -61,12 +45,6 @@ export async function GET(request: NextRequest) {
       const allFlags = await redis.get<Flag[]>(CACHE_KEYS.allFlags());
       if (allFlags) {
         for (const flag of allFlags) {
-          // Filter flags by application if API key is provided
-          if (applicationContext && flag.applicationId && 
-              flag.applicationId !== applicationContext.applicationId) {
-            continue;
-          }
-          
           const result = evaluateFlag(flag, userKey, attributes);
           results.push(result);
         }
@@ -76,19 +54,6 @@ export async function GET(request: NextRequest) {
       for (const flagKey of flagKeys) {
         const flag = await redis.get<Flag>(CACHE_KEYS.flag(flagKey));
         if (flag) {
-          // Check application access
-          if (applicationContext && flag.applicationId && 
-              flag.applicationId !== applicationContext.applicationId) {
-            results.push({
-              flagKey,
-              variant: 'control',
-              value: false,
-              isActive: false,
-              reason: 'access_denied'
-            });
-            continue;
-          }
-
           const result = evaluateFlag(flag, userKey, attributes);
           results.push(result);
         } else {

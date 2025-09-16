@@ -1,15 +1,25 @@
-import murmur from 'murmurhash3js-revisited';
 import { UserAttributes, TargetingRules } from '@/types';
 
 /**
- * Generate a consistent bucket for a user using murmur3 hash
+ * Simple hash function for Edge Runtime (replaces murmur3 to reduce bundle size)
+ */
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Generate a consistent bucket for a user using simple hash
  */
 export function getBucket(userKey: string, salt: string): number {
   const combined = `${userKey}:${salt}`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(combined);
-  const hash = murmur.x86.hash32(data);
-  return Math.abs(hash) % 100;
+  const hash = simpleHash(combined);
+  return hash % 100;
 }
 
 /**
