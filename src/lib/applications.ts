@@ -1,5 +1,19 @@
-import crypto from 'crypto';
 import { prisma } from './database';
+
+// Web Crypto API helpers for Edge Runtime compatibility
+function generateRandomBytes(length: number): string {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hash(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return Array.from(hashArray, byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export interface ApplicationConfig {
   name: string;
@@ -46,8 +60,8 @@ export class ApplicationManager {
    */
   static async createApiKey(applicationId: string, config: ApiKeyConfig) {
     // Generate secure random key
-    const key = `ff_${config.environment}_${crypto.randomBytes(32).toString('hex')}`;
-    const keyHash = crypto.createHash('sha256').update(key).digest('hex');
+    const key = `ff_${config.environment}_${generateRandomBytes(32)}`;
+    const keyHash = await sha256Hash(key);
     const keyPreview = key.substring(0, 8) + '...';
 
     const expiresAt = config.expiresInDays
@@ -76,7 +90,7 @@ export class ApplicationManager {
    * Validate API key and return application context
    */
   static async validateApiKey(key: string) {
-    const keyHash = crypto.createHash('sha256').update(key).digest('hex');
+    const keyHash = await sha256Hash(key);
 
     const apiKey = await prisma.apiKey.findUnique({
       where: { keyHash },

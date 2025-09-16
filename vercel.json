@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "src/app/api/edge/**": {
-      "runtime": "edge"
-    }
-  },
   "crons": [
     {
       "path": "/api/experiments/compute",
